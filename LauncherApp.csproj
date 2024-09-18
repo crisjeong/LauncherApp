@@ -29,4 +29,10 @@
     <Folder Include="Fonts\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="programs.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

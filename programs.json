@@ -1,0 +1,14 @@
+[
+  {
+    "Name": "WinSCP",
+    "FilePath": "C:\\Program Files (x86)\\WinSCP\\WinSCP.exe",
+    "Version": "",
+    "IsRunning": "Not Running"
+  },
+  {
+    "Name": "SocketTest",
+    "FilePath": "E:\\workspace\\github\\SocketTest\\dist\\SocketTest.jar",
+    "Version": "",
+    "IsRunning": "Not Running"
+  }
+]

@@ -80,6 +80,23 @@
         <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
     </Style>
 
+    <!-- Status 컬럼의 DataGridCell 스타일 -->
+    <Style x:Key="StatusCellStyle" TargetType="DataGridCell">
+        <!--<Setter Property="Background" Value="Transparent"/>-->
+        <!--<Setter Property="TextBlock.HorizontalAlignment" Value="Center"/>
+        <Setter Property="TextBlock.VerticalAlignment" Value="Center"/>
+        <Setter Property="TextBlock.TextWrapping" Value="NoWrap"/>
+        <Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis"/>-->
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsRunning}" Value="Running">
+                <Setter Property="Background" Value="LightGreen"/>
+                <Setter Property="Foreground" Value="black"/>
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+    
+
+
     <!-- Style for DataGridRow to ensure selection color is maintained -->
     <Style x:Key="CustomDataGridRowStyle" TargetType="DataGridRow">
         <Setter Property="Background" Value="#2e2e2e"/>
