@@ -263,6 +263,32 @@ namespace LauncherApp
             }
         }
 
+        private Process? FindRunningJavaProgramByName(String name)
+        {
+            var javaProcesses = Process.GetProcessesByName("java");
+            foreach (var process in javaProcesses)
+            {
+                try
+                {
+                    // WMI를 사용해 프로세스의 명령줄을 가져와 해당 JAR 파일이 포함된 프로세스를 찾음
+                    string commandLine = GetCommandLine(process);
+                    if (commandLine != null && commandLine.Contains(name))
+                    {
+                        return process;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // 프로세스 접근 불가 시 예외 무시
+                    MessageBox.Show($"프로세스 접근 불가합니다.: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    break;
+                }                
+            }
+
+            return null;
+        }
+        
+
         private void RunProgram(ProgramInfo program)
         {
             try
@@ -276,6 +302,28 @@ namespace LauncherApp
 
                 if (extension == ".jar")
                 {
+                    // JAR 파일 실행을 위한 Java 명령어 구성
+                    //startInfo = new ProcessStartInfo("java", $"-jar \"{program.FilePath}\"");
+
+                    int retryCount = 5;
+                    while (retryCount > 0)
+                    {
+                        Process? process = FindRunningJavaProgramByName(program.Name);
+                        if (process != null)
+                        {
+                            MessageBox.Show($"동일한 이름의 프로세스가 이미 실행 중입니다. \n동일한 이름의 프로그램을 종료하고 선택하신 프로그램을 실행합니다.", "Infomation", MessageBoxButton.OK);
+                            process.Kill();
+
+                            //강제 delay
+                            Task.Delay(1 * 1000);
+
+                            // 동일한 이름의 프로그램 종료 완료
+                            break;
+                        }
+
+                        retryCount--;
+                    }                     
+
                     // JAR 파일 실행을 위한 Java 명령어 구성
                     startInfo = new ProcessStartInfo("java", $"-jar \"{program.FilePath}\"");
                 }
