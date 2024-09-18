@@ -1,18 +1,20 @@
 ﻿using LauncherApp.Command;
 using LauncherApp.Models;
 using LauncherApp.Views;
+using Microsoft.Extensions.Logging;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Management;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Threading;
-using System.Text.Json;
-using System.Windows.Media;
-using System.Management;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Threading;
+
 
 namespace LauncherApp
 {
@@ -38,12 +40,20 @@ namespace LauncherApp
         //private List<ProgramInfo> programList = new List<ProgramInfo>();
         private ObservableCollection<ProgramInfo> programList;
         private DispatcherTimer timer;
-        private const string DataFilePath = "programs.json"; // 데이터 파일 경로
+        
+        //private const string DataFilePath = "programs.json"; // 데이터 파일 경로
 
-        public MainWindow()
+        private readonly ILogger<MainWindow> _logger;
+        private readonly AppSettings _appSettings;
+
+        public MainWindow(ILogger<MainWindow> logger, AppSettings appSettings)
         {
             InitializeComponent();
+
             DataContext = this;
+
+            _logger = logger;
+            _appSettings = appSettings;
 
             RunActionCommand = new RelayCommand<ProgramInfo>(ExecuteAction);
             DeleteActionCommand = new RelayCommand<ProgramInfo>(DeleteAction);
@@ -56,14 +66,18 @@ namespace LauncherApp
             //ProgramsDataGrid.ItemsSource = programList;
             //programList = new ObservableCollection<ProgramInfo>();
 
-            LoadProgramList();            
+            LoadProgramList(_appSettings.DataFilePath);
 
             programList.CollectionChanged += ProgramList_CollectionChanged; // CollectionChanged 이벤트 처리
-            ProgramsDataGrid.Loaded += ProgramsDataGrid_Loaded;            
+            ProgramsDataGrid.Loaded += ProgramsDataGrid_Loaded;
 
             // Initialize Edit and Delete buttons as disabled
             EditButton.IsEnabled = false;
             //DeleteButton.IsEnabled = false;
+
+            Title = _appSettings.ApplicationName;
+
+            _logger.LogInformation("MainWindow initialized");
         }
 
         private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -96,14 +110,16 @@ namespace LauncherApp
             this.Close();
         }
 
-        private void LoadProgramList()
+        private void LoadProgramList(string filePath)
         {
-            if (File.Exists(DataFilePath))
+            if (File.Exists(filePath))
             {
                 try
                 {
-                    string jsonData = File.ReadAllText(DataFilePath);
+                    string jsonData = File.ReadAllText(filePath);
                     programList = JsonSerializer.Deserialize<ObservableCollection<ProgramInfo>>(jsonData) ?? new ObservableCollection<ProgramInfo>();
+
+                    _logger.LogInformation("Program list loaded");
                 }
                 catch (Exception ex)
                 {
@@ -120,12 +136,12 @@ namespace LauncherApp
             ProgramsDataGrid.SelectedIndex = -1; // SelectedIndex 초기화
         }
 
-        private void SaveProgramList()
+        private void SaveProgramList(string filePath)
         {
             try
             {
                 string jsonData = JsonSerializer.Serialize(programList, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(DataFilePath, jsonData);
+                File.WriteAllText(filePath, jsonData);
             }
             catch (Exception ex)
             {
@@ -135,12 +151,12 @@ namespace LauncherApp
 
         private void ProgramsDataGrid_Loaded(object sender, RoutedEventArgs e)
         {
-            AdjustColumnWidths();        
+            AdjustColumnWidths();
         }
 
         private void ProgramList_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
         {
-            
+
             {
                 AdjustColumnWidths();
             }
@@ -159,7 +175,7 @@ namespace LauncherApp
             {
                 return;
             }
-                
+
 
             // 전체 DataGrid 너비에서 가용 너비 계산
             double availableWidth = ProgramsDataGrid.ActualWidth - 20; // 여기서 20은 가중치를 고려한 Margin
@@ -257,7 +273,7 @@ namespace LauncherApp
                         programList.Remove(selectedProgram);
 
                         ProgramsDataGrid.Items.Refresh();
-                        SaveProgramList(); // 수정 후 목록을 저장
+                        SaveProgramList(_appSettings.DataFilePath); // 수정 후 목록을 저장
                     }
                 }
             }
@@ -282,12 +298,12 @@ namespace LauncherApp
                     // 프로세스 접근 불가 시 예외 무시
                     MessageBox.Show($"프로세스 접근 불가합니다.: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                     break;
-                }                
+                }
             }
 
             return null;
         }
-        
+
 
         private void RunProgram(ProgramInfo program)
         {
@@ -322,7 +338,7 @@ namespace LauncherApp
                         }
 
                         retryCount--;
-                    }                     
+                    }
 
                     // JAR 파일 실행을 위한 Java 명령어 구성
                     startInfo = new ProcessStartInfo("java", $"-jar \"{program.FilePath}\"");
@@ -381,7 +397,7 @@ namespace LauncherApp
                     {
                         process.Kill();
                     }
-                }                
+                }
             }
             catch (Exception ex)
             {
@@ -411,32 +427,32 @@ namespace LauncherApp
                 }
             }
 
-/*
-            ProgramsDataGrid.Items.Refresh();
+            /*
+                        ProgramsDataGrid.Items.Refresh();
 
-            // Re-select the previously selected item
-            if (selectedIndex >= 0 && selectedIndex < ProgramsDataGrid.Items.Count)
-            {
-                ProgramsDataGrid.SelectedIndex = selectedIndex;
-            }
-            else if (selectedProgram != null)
-            {
-                // Fallback to selecting by reference if index is invalid
-                ProgramsDataGrid.SelectedItem = programList.FirstOrDefault(p => p.Name == selectedProgram.Name && p.FilePath == selectedProgram.FilePath);
-            }
+                        // Re-select the previously selected item
+                        if (selectedIndex >= 0 && selectedIndex < ProgramsDataGrid.Items.Count)
+                        {
+                            ProgramsDataGrid.SelectedIndex = selectedIndex;
+                        }
+                        else if (selectedProgram != null)
+                        {
+                            // Fallback to selecting by reference if index is invalid
+                            ProgramsDataGrid.SelectedItem = programList.FirstOrDefault(p => p.Name == selectedProgram.Name && p.FilePath == selectedProgram.FilePath);
+                        }
 
-            // Ensure the selected row style is properly applied
-            if (ProgramsDataGrid.SelectedItem != null)
-            {
-                ProgramsDataGrid.ScrollIntoView(ProgramsDataGrid.SelectedItem);
-                DataGridRow row = (DataGridRow)ProgramsDataGrid.ItemContainerGenerator.ContainerFromItem(ProgramsDataGrid.SelectedItem);
-                if (row != null)
-                {
-                    row.IsSelected = true;
-                    row.MoveFocus(new TraversalRequest(System.Windows.Input.FocusNavigationDirection.Next));
-                }                
-            }
-*/
+                        // Ensure the selected row style is properly applied
+                        if (ProgramsDataGrid.SelectedItem != null)
+                        {
+                            ProgramsDataGrid.ScrollIntoView(ProgramsDataGrid.SelectedItem);
+                            DataGridRow row = (DataGridRow)ProgramsDataGrid.ItemContainerGenerator.ContainerFromItem(ProgramsDataGrid.SelectedItem);
+                            if (row != null)
+                            {
+                                row.IsSelected = true;
+                                row.MoveFocus(new TraversalRequest(System.Windows.Input.FocusNavigationDirection.Next));
+                            }                
+                        }
+            */
         }
 
         private bool IsProgramRunning(ProgramInfo program)
@@ -529,9 +545,9 @@ namespace LauncherApp
                         });
 
                         ProgramsDataGrid.Items.Refresh();
-                        SaveProgramList(); // 수정 후 목록을 저장
+                        SaveProgramList(_appSettings.DataFilePath); // 수정 후 목록을 저장
                     }
-                }                
+                }
             }
         }
 
@@ -546,9 +562,9 @@ namespace LauncherApp
                     selectedProgram.Name = dialog.Program.Name;
                     selectedProgram.FilePath = dialog.Program.FilePath;
                     selectedProgram.Version = dialog.Program.Version;
-                    
+
                     ProgramsDataGrid.Items.Refresh();
-                    SaveProgramList(); // 수정 후 목록을 저장
+                    SaveProgramList(_appSettings.DataFilePath); // 수정 후 목록을 저장
                 }
             }
         }
@@ -576,7 +592,7 @@ namespace LauncherApp
                         programList.Remove(selectedProgram);
 
                         ProgramsDataGrid.Items.Refresh();
-                        SaveProgramList(); // 수정 후 목록을 저장
+                        SaveProgramList(_appSettings.DataFilePath); // 수정 후 목록을 저장
                     }
                 }
             }
@@ -589,7 +605,7 @@ namespace LauncherApp
             //    if (dialog.ShowDialog() == true)
             //    {
             //        programList.Remove(selectedProgram);
-                    
+
             //        ProgramsDataGrid.Items.Refresh();
             //        SaveProgramList(); // 수정 후 목록을 저장
             //    }
@@ -648,6 +664,6 @@ namespace LauncherApp
                         break;
                 }
             }
-        }        
+        }
     }
 }
