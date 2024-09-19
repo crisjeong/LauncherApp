@@ -17,16 +17,15 @@ namespace LauncherApp
 
         public App()
         {
-            ConfigureAppSettings();
-            ConfigureLogging();
-            ConfigureServices();
+            //
         }
 
         private void ConfigureAppSettings()
         {
             var builder = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())  // 현재 디렉터리를 기준으로 설정
-                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                .AddEnvironmentVariables();
 
             Configuration = builder.Build();
         }
@@ -63,8 +62,9 @@ namespace LauncherApp
             services.AddSingleton(Configuration);
 
             // AppSettings 섹션을 객체로 바인딩하여 DI로 주입
-            var appSettings = Configuration.GetSection("AppSettings").Get<AppSettings>();
-            services.AddSingleton(appSettings);
+            //var appSettings = Configuration.GetSection("AppSettings").Get<AppSettings>();
+            //services.AddSingleton(appSettings);
+            services.Configure<AppSettings>(Configuration.GetSection("AppSettings"));            
 
 
             // 서비스 등록 (여기에 서비스나 뷰모델, 리포지토리 등을 등록)            
@@ -76,6 +76,10 @@ namespace LauncherApp
 
         protected override void OnStartup(StartupEventArgs e)
         {
+            ConfigureAppSettings();
+            ConfigureLogging();
+            ConfigureServices();
+
             var mainWindow = ServiceProvider.GetRequiredService<MainWindow>();
             mainWindow.Show();
             base.OnStartup(e);

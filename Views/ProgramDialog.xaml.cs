@@ -1,4 +1,5 @@
-﻿using LauncherApp.Models;
+﻿using LauncherApp.Data;
+using LauncherApp.Models;
 using Microsoft.Win32;
 using System.Windows;
 
@@ -10,10 +11,13 @@ namespace LauncherApp.Views;
 public partial class ProgramDialog : Window
 {
     public ProgramInfo Program { get; private set; }
+    public ActionMode Mode { get; set; }
 
-    public ProgramDialog(ProgramInfo program = null, bool isReadOnly = false)
+    public ProgramDialog(ActionMode mode, ProgramInfo program = null, bool isReadOnly = false)
     {
         InitializeComponent();
+        Mode = mode;
+        SetButtonContent();
 
         if (program != null)
         {
@@ -32,7 +36,25 @@ public partial class ProgramDialog : Window
             ProgramNameTextBox.IsEnabled = false;
             ExecutablePathTextBox.IsEnabled = false;
             VersionTextBox.IsEnabled = false;
-            //ApplyButton.IsEnabled = false;
+            //ApplyButton.IsEnabled = false;            
+        }
+    }
+
+    private void SetButtonContent()
+    {
+        switch (Mode)
+        {
+            case ActionMode.Create:
+                ApplyButton.Content = "Add";
+                break;
+            case ActionMode.Update:
+                ApplyButton.Content = "Update";
+                break;
+            case ActionMode.Delete:
+                ApplyButton.Content = "Delete";
+                break;
+
+            default: break;
         }
     }
 

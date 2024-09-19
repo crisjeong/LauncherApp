@@ -87,7 +87,9 @@
                       GridLinesVisibility="All"
                       ColumnHeaderStyle="{StaticResource CustomDataGridColumnHeaderStyle}"
                       RowStyle="{StaticResource CustomDataGridRowStyle}"
-                      CanUserSortColumns="False">
+                      CanUserSortColumns="False"
+                      EnableColumnVirtualization="False" 
+                      EnableRowVirtualization="False">
 
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Program Name" MinWidth="100" Width="2*" ElementStyle="{StaticResource LeftAlignedTextColumnStyle}" Binding="{Binding Name}">

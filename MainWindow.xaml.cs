@@ -1,7 +1,9 @@
 ﻿using LauncherApp.Command;
+using LauncherApp.Data;
 using LauncherApp.Models;
 using LauncherApp.Views;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -45,15 +47,26 @@ namespace LauncherApp
 
         private readonly ILogger<MainWindow> _logger;
         private readonly AppSettings _appSettings;
+        private readonly IOptionsMonitor<AppSettings> _appSettingsMonitor;
 
-        public MainWindow(ILogger<MainWindow> logger, AppSettings appSettings)
+
+        public MainWindow(ILogger<MainWindow> logger, IOptionsMonitor<AppSettings> appSettingsMonitor/*AppSettings appSettings*/)
         {
             InitializeComponent();
 
             DataContext = this;
 
             _logger = logger;
-            _appSettings = appSettings;
+
+            _appSettings = appSettingsMonitor.CurrentValue;
+            _appSettingsMonitor = appSettingsMonitor;            
+
+            //변경될 때마다 반영
+            _appSettingsMonitor.OnChange(settings =>
+            {
+                Application.Current.Dispatcher.Invoke(() => ApplySettings(settings));                
+            });
+
 
             RunActionCommand = new RelayCommand<ProgramInfo>(ExecuteAction);
             DeleteActionCommand = new RelayCommand<ProgramInfo>(DeleteAction);
@@ -79,6 +92,15 @@ namespace LauncherApp
 
             _logger.LogInformation("MainWindow initialized");
         }
+
+        private void ApplySettings(AppSettings settings)
+        {
+            _appSettings.ApplicationName = settings.ApplicationName;
+            _appSettings.Version = settings.Version;
+            _appSettings.DataFilePath = settings.DataFilePath;
+            _appSettings.JarStater = settings.JarStater;
+        }
+
 
         private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
         {
@@ -209,7 +231,7 @@ namespace LauncherApp
 
         private double CalculateMaxTextWidth(DataGridColumn column)
         {
-            double maxTextWidth = 0;
+            double maxTextWidth = 1;
 
             // 각 열의 셀 데이터를 반복하여 최대 텍스트 길이 계산
             foreach (var item in ProgramsDataGrid.Items)
@@ -266,7 +288,7 @@ namespace LauncherApp
                 else
                 {
                     // 프로그램이 실행 중이 아닌 경우에만 삭제 허용
-                    var dialog = new ProgramDialog(selectedProgram, isReadOnly: true);
+                    var dialog = new ProgramDialog(ActionMode.Delete, selectedProgram, isReadOnly: true);
                     dialog.Owner = this;
                     if (dialog.ShowDialog() == true)
                     {
@@ -281,7 +303,7 @@ namespace LauncherApp
 
         private Process? FindRunningJavaProgramByName(String name)
         {
-            var javaProcesses = Process.GetProcessesByName("java");
+            var javaProcesses = Process.GetProcessesByName(_appSettings.JarStater);
             foreach (var process in javaProcesses)
             {
                 try
@@ -341,7 +363,8 @@ namespace LauncherApp
                     }
 
                     // JAR 파일 실행을 위한 Java 명령어 구성
-                    startInfo = new ProcessStartInfo("java", $"-jar \"{program.FilePath}\"");
+                    //startInfo = new ProcessStartInfo("java", $"-jar \"{program.FilePath}\"");
+                    startInfo = new ProcessStartInfo(_appSettings.JarStater, $"-jar \"{program.FilePath}\"");
                 }
                 else
                 {
@@ -369,7 +392,7 @@ namespace LauncherApp
                 if (extension == ".jar")
                 {
                     // Java 프로세스를 찾아서 해당 JAR 파일을 실행 중인 프로세스를 종료
-                    var javaProcesses = Process.GetProcessesByName("java");
+                    var javaProcesses = Process.GetProcessesByName(_appSettings.JarStater);
                     foreach (var process in javaProcesses)
                     {
                         try
@@ -466,13 +489,13 @@ namespace LauncherApp
 
             if (extension == ".jar")
             {
-                var javaProcesses = Process.GetProcessesByName("java");
+                var javaProcesses = Process.GetProcessesByName(_appSettings.JarStater);
                 foreach (var process in javaProcesses)
                 {
                     try
                     {
                         // 각 프로세스의 명령줄을 통해 JAR 파일이 실행 중인지 확인
-                        if (process.MainModule != null && process.MainModule.FileName.EndsWith("java.exe"))
+                        if (process.MainModule != null && process.MainModule.FileName.EndsWith($"{_appSettings.JarStater}.exe"))
                         {
                             var commandLine = GetCommandLine(process);
                             if (commandLine != null && commandLine.Contains(program.FilePath))
@@ -515,7 +538,7 @@ namespace LauncherApp
 
         private void AddButton_Click(object sender, RoutedEventArgs e)
         {
-            var dialog = new ProgramDialog();
+            var dialog = new ProgramDialog(ActionMode.Create);
             dialog.Owner = this;
             if (dialog.ShowDialog() == true)
             {
@@ -555,7 +578,7 @@ namespace LauncherApp
         {
             if (ProgramsDataGrid.SelectedItem is ProgramInfo selectedProgram)
             {
-                var dialog = new ProgramDialog(selectedProgram, isReadOnly: true);
+                var dialog = new ProgramDialog(ActionMode.Update, selectedProgram, isReadOnly: true);
                 dialog.Owner = this;
                 if (dialog.ShowDialog() == true)
                 {
@@ -585,8 +608,8 @@ namespace LauncherApp
                 else
                 {
                     // 프로그램이 실행 중이 아닌 경우에만 삭제 허용
-                    var dialog = new ProgramDialog(selectedProgram, isReadOnly: true);
-                    dialog.Owner = this;
+                    var dialog = new ProgramDialog(ActionMode.Delete, selectedProgram, isReadOnly: true);
+                    dialog.Owner = this;                    
                     if (dialog.ShowDialog() == true)
                     {
                         programList.Remove(selectedProgram);
