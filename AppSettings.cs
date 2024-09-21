@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace LauncherApp;
+﻿namespace LauncherApp;
 
 public class AppSettings
 {
@@ -12,5 +6,5 @@ public class AppSettings
     public string Version { get; set; }
     public string DataFilePath { get; set; }
 
-    public string JarStater {  get; set; }
+    public string JarStater { get; set; }
 }

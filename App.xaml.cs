@@ -64,7 +64,7 @@ namespace LauncherApp
             // AppSettings 섹션을 객체로 바인딩하여 DI로 주입
             //var appSettings = Configuration.GetSection("AppSettings").Get<AppSettings>();
             //services.AddSingleton(appSettings);
-            services.Configure<AppSettings>(Configuration.GetSection("AppSettings"));            
+            services.Configure<AppSettings>(Configuration.GetSection("AppSettings"));
 
 
             // 서비스 등록 (여기에 서비스나 뷰모델, 리포지토리 등을 등록)            

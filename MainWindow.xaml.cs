@@ -42,7 +42,7 @@ namespace LauncherApp
         //private List<ProgramInfo> programList = new List<ProgramInfo>();
         private ObservableCollection<ProgramInfo> programList;
         private DispatcherTimer timer;
-        
+
         //private const string DataFilePath = "programs.json"; // 데이터 파일 경로
 
         private readonly ILogger<MainWindow> _logger;
@@ -59,12 +59,12 @@ namespace LauncherApp
             _logger = logger;
 
             _appSettings = appSettingsMonitor.CurrentValue;
-            _appSettingsMonitor = appSettingsMonitor;            
+            _appSettingsMonitor = appSettingsMonitor;
 
             //변경될 때마다 반영
             _appSettingsMonitor.OnChange(settings =>
             {
-                Application.Current.Dispatcher.Invoke(() => ApplySettings(settings));                
+                Application.Current.Dispatcher.Invoke(() => ApplySettings(settings));
             });
 
 
@@ -83,6 +83,7 @@ namespace LauncherApp
 
             programList.CollectionChanged += ProgramList_CollectionChanged; // CollectionChanged 이벤트 처리
             ProgramsDataGrid.Loaded += ProgramsDataGrid_Loaded;
+            ProgramsDataGrid.LayoutUpdated += DataGrid_LayoutUpdated;
 
             // Initialize Edit and Delete buttons as disabled
             EditButton.IsEnabled = false;
@@ -118,7 +119,11 @@ namespace LauncherApp
                 ProgramsDataGrid.Height = newHeight;
             }
 
-            AdjustColumnWidths();
+            //if (ProgramsDataGrid.ItemContainerGenerator.Status == System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated)
+            {
+                AdjustColumnWidths();
+            }
+
         }
 
         private void CaptionBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -169,6 +174,15 @@ namespace LauncherApp
             {
                 MessageBox.Show($"Failed to save program list: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        private void DataGrid_LayoutUpdated(object sender, EventArgs e)
+        {
+            // DataGrid의 모든 시각적 요소가 렌더링된 후에 호출됩니다.
+            AdjustColumnWidths();
+
+            // 필요한 경우 이벤트 핸들러를 해제하여 반복 호출 방지
+            ProgramsDataGrid.LayoutUpdated -= DataGrid_LayoutUpdated;
         }
 
         private void ProgramsDataGrid_Loaded(object sender, RoutedEventArgs e)
@@ -364,22 +378,71 @@ namespace LauncherApp
 
                     // JAR 파일 실행을 위한 Java 명령어 구성
                     //startInfo = new ProcessStartInfo("java", $"-jar \"{program.FilePath}\"");
-                    startInfo = new ProcessStartInfo(_appSettings.JarStater, $"-jar \"{program.FilePath}\"");
+                    //startInfo = new ProcessStartInfo(_appSettings.JarStater, $"-jar \"{program.FilePath}\"");
+
+                    //StartJarFile(program.FilePath);
+
+                    Process processJar = new Process();
+                    processJar.EnableRaisingEvents = false;
+                    processJar.StartInfo.FileName = "java.exe";
+                    processJar.StartInfo.Arguments = "-jar " + '"' + program.FilePath;
+                    //processJar.StartInfo.Verb = "runas";
+                    processJar.Start();
+
                 }
                 else
                 {
                     // 일반 실행 파일 실행
                     startInfo = new ProcessStartInfo(program.FilePath);
+                    startInfo.WorkingDirectory = System.IO.Path.GetDirectoryName(program.FilePath);
+                    startInfo.UseShellExecute = true;
+
+                    Process.Start(startInfo);
                 }
 
-                startInfo.WorkingDirectory = System.IO.Path.GetDirectoryName(program.FilePath);
-                startInfo.UseShellExecute = true;
 
-                Process.Start(startInfo);
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Error starting program: {ex.Message}");
+            }
+        }
+
+        public void StartJarFile(string jarFilePath)
+        {
+            try
+            {
+                ProcessStartInfo startInfo = new ProcessStartInfo
+                {
+                    FileName = "java",
+                    Arguments = $"-jar \"{jarFilePath}\"",
+                    //RedirectStandardOutput = true,
+                    //RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using (Process process = new Process { StartInfo = startInfo })
+                {
+                    process.Start();
+
+                    // Optional: Read the output and error streams if needed
+                    //string output = process.StandardOutput.ReadToEnd();
+                    //string error = process.StandardError.ReadToEnd();
+
+                    //process.WaitForExit();
+
+                    //if (process.ExitCode != 0)
+                    //{
+                    //    // Handle error
+                    //    throw new Exception($"Error executing jar file: {error}");
+                    //}
+                }
+            }
+            catch (Exception ex)
+            {
+                // Handle exceptions
+                MessageBox.Show($"Failed to start jar file: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -433,7 +496,7 @@ namespace LauncherApp
             //var selectedProgram = ProgramsDataGrid.SelectedItem as ProgramInfo;
             //int selectedIndex = ProgramsDataGrid.SelectedIndex;
             //string selectedFilePath = selectedProgram?.FilePath;
-
+            
 
             foreach (var program in programList)
             {
@@ -609,7 +672,7 @@ namespace LauncherApp
                 {
                     // 프로그램이 실행 중이 아닌 경우에만 삭제 허용
                     var dialog = new ProgramDialog(ActionMode.Delete, selectedProgram, isReadOnly: true);
-                    dialog.Owner = this;                    
+                    dialog.Owner = this;
                     if (dialog.ShowDialog() == true)
                     {
                         programList.Remove(selectedProgram);
