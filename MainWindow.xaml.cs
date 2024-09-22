@@ -1,6 +1,7 @@
 ﻿using LauncherApp.Command;
 using LauncherApp.Data;
 using LauncherApp.Models;
+using LauncherApp.Services.Interfaces;
 using LauncherApp.Views;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -40,7 +41,7 @@ namespace LauncherApp
         public ICommand RunActionCommand { get; }
         public ICommand DeleteActionCommand { get; }
         //private List<ProgramInfo> programList = new List<ProgramInfo>();
-        private ObservableCollection<ProgramInfo> programList;
+        //private ObservableCollection<ProgramInfo> programList;
         private DispatcherTimer timer;
 
         //private const string DataFilePath = "programs.json"; // 데이터 파일 경로
@@ -48,18 +49,20 @@ namespace LauncherApp
         private readonly ILogger<MainWindow> _logger;
         private readonly AppSettings _appSettings;
         private readonly IOptionsMonitor<AppSettings> _appSettingsMonitor;
+        private readonly IProgramManager _programManager;
 
 
-        public MainWindow(ILogger<MainWindow> logger, IOptionsMonitor<AppSettings> appSettingsMonitor/*AppSettings appSettings*/)
+        public MainWindow(ILogger<MainWindow> logger, IOptionsMonitor<AppSettings> appSettingsMonitor, IProgramManager programManager)
         {
             InitializeComponent();
 
             DataContext = this;
 
             _logger = logger;
-
             _appSettings = appSettingsMonitor.CurrentValue;
             _appSettingsMonitor = appSettingsMonitor;
+            _programManager = programManager;
+
 
             //변경될 때마다 반영
             _appSettingsMonitor.OnChange(settings =>
@@ -76,18 +79,13 @@ namespace LauncherApp
             timer.Tick += Timer_Tick;
             timer.Start();
 
-            //ProgramsDataGrid.ItemsSource = programList;
-            //programList = new ObservableCollection<ProgramInfo>();
 
-            LoadProgramList(_appSettings.DataFilePath);
+            LoadData(_programManager, _appSettings.DataFilePath);
 
-            programList.CollectionChanged += ProgramList_CollectionChanged; // CollectionChanged 이벤트 처리
+            _programManager.CollectionChanged += ProgramList_CollectionChanged;            
+
             ProgramsDataGrid.Loaded += ProgramsDataGrid_Loaded;
             ProgramsDataGrid.LayoutUpdated += DataGrid_LayoutUpdated;
-
-            // Initialize Edit and Delete buttons as disabled
-            EditButton.IsEnabled = false;
-            //DeleteButton.IsEnabled = false;
 
             Title = _appSettings.ApplicationName;
 
@@ -100,6 +98,24 @@ namespace LauncherApp
             _appSettings.Version = settings.Version;
             _appSettings.DataFilePath = settings.DataFilePath;
             _appSettings.JarStater = settings.JarStater;
+        }
+
+        private async void LoadData(IProgramManager programManager, string filePath)
+        {
+            ProgramsDataGrid.ItemsSource = await programManager.LoadFromFile(filePath); ;
+            ProgramsDataGrid.SelectedIndex = -1; // SelectedIndex 초기화
+        }
+
+        private async void SaveData(IProgramManager programManager, string filePath)
+        {
+            try
+            {
+                await programManager.SaveToFile(filePath);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to save program list: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
 
@@ -137,45 +153,6 @@ namespace LauncherApp
             this.Close();
         }
 
-        private void LoadProgramList(string filePath)
-        {
-            if (File.Exists(filePath))
-            {
-                try
-                {
-                    string jsonData = File.ReadAllText(filePath);
-                    programList = JsonSerializer.Deserialize<ObservableCollection<ProgramInfo>>(jsonData) ?? new ObservableCollection<ProgramInfo>();
-
-                    _logger.LogInformation("Program list loaded");
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Failed to load program list: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                    programList = new ObservableCollection<ProgramInfo>();
-                }
-            }
-            else
-            {
-                programList = new ObservableCollection<ProgramInfo>();
-            }
-
-            ProgramsDataGrid.ItemsSource = programList;
-            ProgramsDataGrid.SelectedIndex = -1; // SelectedIndex 초기화
-        }
-
-        private void SaveProgramList(string filePath)
-        {
-            try
-            {
-                string jsonData = JsonSerializer.Serialize(programList, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(filePath, jsonData);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Failed to save program list: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
         private void DataGrid_LayoutUpdated(object sender, EventArgs e)
         {
             // DataGrid의 모든 시각적 요소가 렌더링된 후에 호출됩니다.
@@ -192,10 +169,7 @@ namespace LauncherApp
 
         private void ProgramList_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
         {
-
-            {
-                AdjustColumnWidths();
-            }
+            AdjustColumnWidths();
         }
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -272,21 +246,45 @@ namespace LauncherApp
             }
 
             return maxTextWidth;
-        }
+        }        
 
-        private void ExecuteAction(ProgramInfo program)
+        private async void AddButton_Click(object sender, RoutedEventArgs e)
         {
-            if (program.IsRunning == "Running")
+            var dialog = new ProgramDialog(ActionMode.Create);
+            dialog.Owner = this;
+            if (dialog.ShowDialog() == true)
             {
-                StopProgram(program);
-            }
-            else
-            {
-                RunProgram(program);
+                // 입력된 프로그램 이름이 이미 목록에 있는지 확인  
+                bool isDuplicate = _programManager.Find(dialog.Program) ?? false;
+
+                if (isDuplicate)
+                {
+                    // 중복된 경우 에러 메시지 박스를 표시
+                    MessageBox.Show("A program with the same name already exists. Please choose a different name.",
+                                    "Duplicate Program Name",
+                                    MessageBoxButton.OK,
+                                    MessageBoxImage.Error);
+                }
+                else
+                {
+                    if (!String.IsNullOrEmpty(dialog.Program.Name))
+                    {
+                        _programManager.Add(new ProgramInfo
+                        {
+                            Name = dialog.Program.Name,
+                            FilePath = dialog.Program.FilePath,
+                            Version = dialog.Program.Version,
+                            IsRunning = "Not Running"
+                        });
+                        await _programManager.SaveToFile(_appSettings.DataFilePath);
+
+                        ProgramsDataGrid.Items.Refresh();                        
+                    }
+                }
             }
         }
 
-        private void DeleteAction(ProgramInfo program)
+        private async void DeleteAction(ProgramInfo program)
         {
             var selectedProgram = ProgramsDataGrid.SelectedItem as ProgramInfo;
             if (selectedProgram != null)
@@ -306,12 +304,24 @@ namespace LauncherApp
                     dialog.Owner = this;
                     if (dialog.ShowDialog() == true)
                     {
-                        programList.Remove(selectedProgram);
+                        _programManager.Remove(selectedProgram);
+                        await _programManager.SaveToFile(_appSettings.DataFilePath);
 
                         ProgramsDataGrid.Items.Refresh();
-                        SaveProgramList(_appSettings.DataFilePath); // 수정 후 목록을 저장
                     }
                 }
+            }
+        }
+
+        private void ExecuteAction(ProgramInfo program)
+        {
+            if (program.IsRunning == "Running")
+            {
+                StopProgram(program);
+            }
+            else
+            {
+                RunProgram(program);
             }
         }
 
@@ -493,52 +503,10 @@ namespace LauncherApp
 
         private void Timer_Tick(object sender, EventArgs e)
         {
-            //var selectedProgram = ProgramsDataGrid.SelectedItem as ProgramInfo;
-            //int selectedIndex = ProgramsDataGrid.SelectedIndex;
-            //string selectedFilePath = selectedProgram?.FilePath;
-            
-
-            foreach (var program in programList)
-            {
-                //string processName = Path.GetFileNameWithoutExtension(program.FilePath);
-                //var processes = Process.GetProcessesByName(processName);
-                //program.IsRunning = processes.Length > 0 ? "Running" : "Not Running";
-                if (IsProgramRunning(program))
-                {
-                    program.IsRunning = "Running";
-                }
-                else
-                {
-                    program.IsRunning = "Not Running";
-                }
-            }
-
-            /*
-                        ProgramsDataGrid.Items.Refresh();
-
-                        // Re-select the previously selected item
-                        if (selectedIndex >= 0 && selectedIndex < ProgramsDataGrid.Items.Count)
-                        {
-                            ProgramsDataGrid.SelectedIndex = selectedIndex;
-                        }
-                        else if (selectedProgram != null)
-                        {
-                            // Fallback to selecting by reference if index is invalid
-                            ProgramsDataGrid.SelectedItem = programList.FirstOrDefault(p => p.Name == selectedProgram.Name && p.FilePath == selectedProgram.FilePath);
-                        }
-
-                        // Ensure the selected row style is properly applied
-                        if (ProgramsDataGrid.SelectedItem != null)
-                        {
-                            ProgramsDataGrid.ScrollIntoView(ProgramsDataGrid.SelectedItem);
-                            DataGridRow row = (DataGridRow)ProgramsDataGrid.ItemContainerGenerator.ContainerFromItem(ProgramsDataGrid.SelectedItem);
-                            if (row != null)
-                            {
-                                row.IsSelected = true;
-                                row.MoveFocus(new TraversalRequest(System.Windows.Input.FocusNavigationDirection.Next));
-                            }                
-                        }
-            */
+            //foreach (var program in programList)
+            //{
+            //    program.IsRunning = IsProgramRunning(program) == true ? "Running" : "Not Running";
+            //}
         }
 
         private bool IsProgramRunning(ProgramInfo program)
@@ -597,114 +565,12 @@ namespace LauncherApp
             {
                 return null;
             }
-        }
-
-        private void AddButton_Click(object sender, RoutedEventArgs e)
-        {
-            var dialog = new ProgramDialog(ActionMode.Create);
-            dialog.Owner = this;
-            if (dialog.ShowDialog() == true)
-            {
-                // 입력된 프로그램 이름이 이미 목록에 있는지 확인
-                bool isDuplicate = programList.Any(p => p.Name.Equals(dialog.Program.Name, StringComparison.OrdinalIgnoreCase) &&
-                                                        p.FilePath.Equals(dialog.Program.FilePath, StringComparison.OrdinalIgnoreCase));
-
-                if (isDuplicate)
-                {
-                    // 중복된 경우 에러 메시지 박스를 표시
-                    MessageBox.Show("A program with the same name already exists. Please choose a different name.",
-                                    "Duplicate Program Name",
-                                    MessageBoxButton.OK,
-                                    MessageBoxImage.Error);
-                }
-                else
-                {
-                    if (!String.IsNullOrEmpty(dialog.Program.Name))
-                    {
-                        //programList.Add(dialog.Program);
-                        programList.Add(new ProgramInfo
-                        {
-                            Name = dialog.Program.Name,
-                            FilePath = dialog.Program.FilePath,
-                            Version = dialog.Program.Version,
-                            IsRunning = "Not Running"
-                        });
-
-                        ProgramsDataGrid.Items.Refresh();
-                        SaveProgramList(_appSettings.DataFilePath); // 수정 후 목록을 저장
-                    }
-                }
-            }
-        }
-
-        private void EditButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (ProgramsDataGrid.SelectedItem is ProgramInfo selectedProgram)
-            {
-                var dialog = new ProgramDialog(ActionMode.Update, selectedProgram, isReadOnly: true);
-                dialog.Owner = this;
-                if (dialog.ShowDialog() == true)
-                {
-                    selectedProgram.Name = dialog.Program.Name;
-                    selectedProgram.FilePath = dialog.Program.FilePath;
-                    selectedProgram.Version = dialog.Program.Version;
-
-                    ProgramsDataGrid.Items.Refresh();
-                    SaveProgramList(_appSettings.DataFilePath); // 수정 후 목록을 저장
-                }
-            }
-        }
-
-        private void DeleteButton_Click(object sender, RoutedEventArgs e)
-        {
-            var selectedProgram = ProgramsDataGrid.SelectedItem as ProgramInfo;
-            if (selectedProgram != null)
-            {
-                // 프로그램의 상태가 Running인 경우 삭제를 차단하고 오류 메시지를 표시
-                if (selectedProgram.IsRunning.Equals("Running", StringComparison.OrdinalIgnoreCase))
-                {
-                    MessageBox.Show("The selected program is currently running and cannot be deleted.",
-                                    "Delete Error",
-                                    MessageBoxButton.OK,
-                                    MessageBoxImage.Error);
-                }
-                else
-                {
-                    // 프로그램이 실행 중이 아닌 경우에만 삭제 허용
-                    var dialog = new ProgramDialog(ActionMode.Delete, selectedProgram, isReadOnly: true);
-                    dialog.Owner = this;
-                    if (dialog.ShowDialog() == true)
-                    {
-                        programList.Remove(selectedProgram);
-
-                        ProgramsDataGrid.Items.Refresh();
-                        SaveProgramList(_appSettings.DataFilePath); // 수정 후 목록을 저장
-                    }
-                }
-            }
-
-
-            //if (ProgramsDataGrid.SelectedItem is ProgramInfo selectedProgram)
-            //{
-            //    var dialog = new ProgramDialog(selectedProgram, isReadOnly: true);
-            //    dialog.Owner = this;
-            //    if (dialog.ShowDialog() == true)
-            //    {
-            //        programList.Remove(selectedProgram);
-
-            //        ProgramsDataGrid.Items.Refresh();
-            //        SaveProgramList(); // 수정 후 목록을 저장
-            //    }
-            //}
-        }
+        }      
 
         private void ProgramsDataGrid_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
             // Handle selection changed event if needed
             var selectedProgram = ProgramsDataGrid.SelectedItem as ProgramInfo;
-
-            EditButton.IsEnabled = ProgramsDataGrid.SelectedItem != null;
-            //DeleteButton.IsEnabled = ProgramsDataGrid.SelectedItem != null;
         }
 
         private void ResizeWindow(ResizeDirection direction)
@@ -753,3 +619,55 @@ namespace LauncherApp
         }
     }
 }
+
+
+/*
+
+private void EditButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (ProgramsDataGrid.SelectedItem is ProgramInfo selectedProgram)
+            {
+                var dialog = new ProgramDialog(ActionMode.Update, selectedProgram, isReadOnly: true);
+                dialog.Owner = this;
+                if (dialog.ShowDialog() == true)
+                {
+                    selectedProgram.Name = dialog.Program.Name;
+                    selectedProgram.FilePath = dialog.Program.FilePath;
+                    selectedProgram.Version = dialog.Program.Version;
+
+                    ProgramsDataGrid.Items.Refresh();
+                    //SaveProgramList(_appSettings.DataFilePath); // 수정 후 목록을 저장
+                }
+            }
+        }
+
+        private void DeleteButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedProgram = ProgramsDataGrid.SelectedItem as ProgramInfo;
+            if (selectedProgram != null)
+            {
+                // 프로그램의 상태가 Running인 경우 삭제를 차단하고 오류 메시지를 표시
+                if (selectedProgram.IsRunning.Equals("Running", StringComparison.OrdinalIgnoreCase))
+                {
+                    MessageBox.Show("The selected program is currently running and cannot be deleted.",
+                                    "Delete Error",
+                                    MessageBoxButton.OK,
+                                    MessageBoxImage.Error);
+                }
+                else
+                {
+                    // 프로그램이 실행 중이 아닌 경우에만 삭제 허용
+                    var dialog = new ProgramDialog(ActionMode.Delete, selectedProgram, isReadOnly: true);
+                    dialog.Owner = this;
+                    if (dialog.ShowDialog() == true)
+                    {
+                        programList.Remove(selectedProgram);
+
+                        ProgramsDataGrid.Items.Refresh();
+                        SaveProgramList(_appSettings.DataFilePath); // 수정 후 목록을 저장
+                    }
+                }
+            }
+        }
+
+*/

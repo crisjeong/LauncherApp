@@ -48,12 +48,12 @@
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="2,10,8,-4">
                 <Button Content="Add" Style="{StaticResource RoundedButtonStyle}" Click="AddButton_Click" />
-                <Button Content="Edit" 
+                <!--<Button Content="Edit" 
                     Visibility="Collapsed"
                     x:Name="EditButton" 
                     Style="{StaticResource RoundedButtonStyle}"
                     Click="EditButton_Click" 
-                    IsEnabled="False"/>
+                    IsEnabled="False"/>-->
 
                 <!--<Button Content="Delete" 
                     x:Name="DeleteButton" 
